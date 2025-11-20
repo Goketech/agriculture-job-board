@@ -41,7 +41,14 @@ A Python CLI application that connects local farmers with agricultural workers t
    ```bash
    python main.py
    ```
+6. **running tests**
 
+```bash
+python -m unittest discover -s tests -p "*.py"
+```
+
+
+Mention that all tests must pass for code to be considered stable.
 ## 📁 Project Structure
 
 ```
