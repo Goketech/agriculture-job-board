@@ -1,5 +1,5 @@
 import database
-from modals import Farmer, Worker
+from models import Farmer, Worker
 from utils import (
     print_error,
     print_success,

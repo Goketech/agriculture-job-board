@@ -1,333 +1,221 @@
-import sqlite3
+"""
+Job management module for Local Agricultural Job Board & Skills Matcher
+
+This module handles job posting, viewing, searching, and management operations.
+Owner: Sylvie Uwera
+"""
+
+import database
 from tabulate import tabulate
-
-DB_NAME = "data/agri_jobs.db"
-
-
-# 1. Add a new job (internal helper)
-def _add_job_with_farmer(farmer_id: int):
-    """Internal helper to add a new job for a given farmer_id."""
-    print("\n--- Add a New Job ---")
-    title = input("Enter job title: ").strip()
-    skill_required = input("Enter required skill: ").strip()
-    location = input("Enter job location: ").strip()
-    duration = input("Enter job duration: ").strip()
-    pay_rate = input("Enter pay rate: ").strip()
-    status = input("Enter job status (open/filled/closed) [open]: ").strip().lower() or "open"
-
-    if status not in ("open", "filled", "closed"):
-        print("Invalid status. Must be 'open', 'filled', or 'closed'.")
-        return
-
-    if not all([title, skill_required, location, duration, pay_rate]):
-        print("All fields are required!")
-        return
-
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-
-    cursor.execute(
-        """
-        INSERT INTO jobs (farmer_id, title, skill_required, location, duration, pay_rate, status)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        """,
-        (farmer_id, title, skill_required, location, duration, pay_rate, status),
-    )
-
-    conn.commit()
-    conn.close()
-    print("Job added successfully!")
+from models import Job, validate_location
+from utils import print_error, print_success, print_info
 
 
 def post_job(farmer_id: int):
-    """Public API used by main.py to post a job for a specific farmer."""
-    _add_job_with_farmer(farmer_id)
-
-# 2. View all jobs
-def view_all_jobs():
-    """Display all jobs."""
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    cursor.execute("""
-        SELECT job_id, title, skill_required, location, duration, pay_rate, status, posted_date
-        FROM jobs
-    """)
-    jobs = cursor.fetchall()
-    conn.close()
-
-    if not jobs:
-        print("No jobs found.")
-        return
-
-    headers = ["Job ID", "Title", "Skills Required", "Location", "Duration", "Pay Rate", "Status", "Posted Date"]
-    print(tabulate(jobs, headers=headers, tablefmt="grid"))
-
-# 3. View jobs by location
-def view_jobs_by_location():
-    location_input = input("Enter location to filter jobs: ").strip()
-    if not location_input:
-        print("Invalid input.")
-        return
-
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    cursor.execute("""
-        SELECT job_id, title, skill_required, location, duration, pay_rate, status, posted_date
-        FROM jobs
-        WHERE location LIKE ?
-    """, (f"%{location_input}%",))
-    jobs = cursor.fetchall()
-    conn.close()
-
-    if not jobs:
-        print(f"No jobs found in '{location_input}'.")
-        return
-
-    headers = ["Job ID", "Title", "Skills Required", "Location", "Duration", "Pay Rate", "Status", "Posted Date"]
-    print(tabulate(jobs, headers=headers, tablefmt="grid"))
-# 4. View jobs by skill
-def view_jobs_by_skill():
-    """Function to display jobs filtered by skill."""
-    skill_input = input("Enter skill to filter jobs: ").strip()
-    if not skill_input:
-        print("Invalid input. Please enter a skill.")
-        return
-
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    cursor.execute("""
-        SELECT job_id, title, skill_required, location, duration, pay_rate, status, posted_date
-        FROM jobs
-        WHERE skill_required LIKE ?
-    """, (f"%{skill_input}%",))
-    jobs = cursor.fetchall()
-    conn.close()
-
-    if not jobs:
-        print(f"No jobs found requiring '{skill_input}'.")
-        return
-
-    headers = ["Job ID", "Title", "Skills Required", "Location", "Duration", "Pay Rate", "Status", "Posted Date"]
-    print(tabulate(jobs, headers=headers, tablefmt="grid"))
-
-
-# 5. View jobs by title
-def view_jobs_by_title():
-    """Function to display jobs filtered by title."""
-    title_input = input("Enter job title to search: ").strip()
-    if not title_input:
-        print("Invalid input. Please enter a title.")
-        return
-
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    cursor.execute("""
-        SELECT job_id, title, skill_required, location, duration, pay_rate, status, posted_date
-        FROM jobs
-        WHERE title LIKE ?
-    """, (f"%{title_input}%",))
-    jobs = cursor.fetchall()
-    conn.close()
-
-    if not jobs:
-        print(f"No jobs found with title '{title_input}'.")
-        return
-
-    headers = ["Job ID", "Title", "Skills Required", "Location", "Duration", "Pay Rate", "Status", "Posted Date"]
-    print(tabulate(jobs, headers=headers, tablefmt="grid"))
-
-# 6. View jobs by status
-def view_jobs_by_status():
-    """Function to display jobs filtered by status."""
-    status_input = input("Enter job status (open/closed): ").strip().lower()
-    if status_input not in ["open", "closed"]:
-        print("Invalid status. Choose 'open' or 'closed'.")
-        return
-
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    cursor.execute("""
-        SELECT job_id, title, skill_required, location, duration, pay_rate, status, posted_date
-        FROM jobs
-        WHERE status = ?
-    """, (status_input,))
-    jobs = cursor.fetchall()
-    conn.close()
-
-    if not jobs:
-        print(f"No jobs found with status '{status_input}'.")
-        return
-
-    headers = ["Job ID", "Title", "Skills Required", "Location", "Duration", "Pay Rate", "Status", "Posted Date"]
-    print(tabulate(jobs, headers=headers, tablefmt="grid"))
-
-DB_NAME = "data/agri_jobs.db"
-
-def update_job():
-    """Function to update an existing job's details safely."""
-    try:
-        job_id = int(input("Enter the Job ID to update: "))
-    except ValueError:
-        print("Invalid Job ID. Must be a number.")
-        return
-
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-
-    #  Use the correct primary key column name (job_id)
-    cursor.execute("SELECT job_id, title, skill_required, location, duration, pay_rate, status FROM jobs WHERE job_id = ?", (job_id,))
-    job = cursor.fetchone()
-    if not job:
-        print(f"No job found with ID {job_id}.")
-        conn.close()
-        return
-
-    current_id, current_title, current_skill, current_location, current_duration, current_pay, current_status = job
-
-    print("Leave a field blank if you do not want to change it.")
-
-    #  Prompt user with current values, keep if blank
-    title = input(f"Enter new title [{current_title}]: ").strip() or current_title
-    skill_required = input(f"Enter new skill required [{current_skill or 'N/A'}]: ").strip() or current_skill or 'N/A'
-    location = input(f"Enter new location [{current_location}]: ").strip() or current_location
-    duration = input(f"Enter new duration [{current_duration}]: ").strip() or current_duration
-
-    #  Validate pay rate as float
-    pay_input = input(f"Enter new pay rate [{current_pay}]: ").strip()
-    try:
-        pay_rate = float(pay_input) if pay_input else current_pay
-    except ValueError:
-        print("Invalid pay rate. Must be a number.")
-        conn.close()
-        return
-
-    #  Validate status (only open/closed allowed)
-    status_input = input(f"Enter new status (open/closed) [{current_status}]: ").strip().lower()
-    status = status_input if status_input in ["open", "closed"] else current_status
-
-    try:
-        cursor.execute("""
-            UPDATE jobs
-            SET title = ?, skill_required = ?, location = ?, duration = ?, pay_rate = ?, status = ?
-            WHERE job_id = ?
-        """, (title, skill_required, location, duration, pay_rate, status, job_id))
-        conn.commit()
-
-        #  Show updated job in a clean table
-        cursor.execute("SELECT job_id, title, skill_required, location, duration, pay_rate, status FROM jobs WHERE job_id = ?", (job_id,))
-        updated_job = cursor.fetchone()
-        print(f"\n  Job ID {job_id} has been updated successfully.\n")
-        print(tabulate([updated_job], headers=["Job ID", "Title", "Skill Required", "Location", "Duration", "Pay Rate", "Status"], tablefmt="grid"))
-
-    except sqlite3.IntegrityError as e:
-        print("An error occurred:", e)
-    finally:
-        conn.close()
-
-
-def delete_job(job_id: int | None = None):
-    """Function to safely delete a job from the database.
-
-    If job_id is None, prompt the user (backwards compatible);
-    otherwise delete the given job_id (used by main.py).
     """
-    if job_id is None:
-        try:
-            job_id = int(input("Enter the Job ID to delete: "))
-        except ValueError:
-            print("Invalid Job ID. Must be a number.")
-            return
-
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-
-    cursor.execute("SELECT * FROM jobs WHERE job_id = ?", (job_id,))
-    job = cursor.fetchone()
-    if not job:
-        print(f"No job found with ID {job_id}.")
-        conn.close()
+    Post a new job for a specific farmer.
+    
+    Args:
+        farmer_id (int): ID of the farmer posting the job
+    """
+    print("\n--- Post a New Job ---")
+    
+    title = input("Enter job title: ").strip()
+    if not title:
+        print_error("Job title is required.")
         return
-
-    confirm = input(f"Are you sure you want to delete job '{job[2]}'? (y/n): ").strip().lower()
-    if confirm != "y":
-        print("Deletion cancelled.")
-        conn.close()
+    
+    description = input("Enter job description (optional): ").strip() or None
+    
+    skill_required = input("Enter required skill: ").strip()
+    if not skill_required:
+        print_error("Required skill is needed.")
         return
-
+    
+    location = input("Enter job location: ").strip()
+    if not validate_location(location):
+        print_error("Invalid location.")
+        return
+    
+    duration = input("Enter job duration (optional): ").strip() or None
+    pay_rate = input("Enter pay rate (optional): ").strip() or None
+    
+    # Create job model and validate
+    job = Job(
+        farmer_id=farmer_id,
+        title=title,
+        description=description,
+        skill_required=skill_required,
+        location=location,
+        duration=duration,
+        pay_rate=pay_rate,
+        status='open'
+    )
+    
+    is_valid, error = job.validate()
+    if not is_valid:
+        print_error(error)
+        return
+    
     try:
-        cursor.execute("DELETE FROM jobs WHERE job_id = ?", (job_id,))
+        conn = database.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO jobs (farmer_id, title, description, skill_required, location, duration, pay_rate, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (job.farmer_id, job.title, job.description, job.skill_required, 
+             job.location, job.duration, job.pay_rate, job.status)
+        )
         conn.commit()
-        print(f"Job ID {job_id} has been deleted successfully.")
-    except sqlite3.Error as e:
-        print(f"An error occurred: {e}")
-    finally:
+        job_id = cursor.lastrowid
         conn.close()
+        
+        print_success(f"Job posted successfully! Job ID: {job_id}")
+    except Exception as e:
+        print_error(f"Failed to post job: {e}")
+
+
+def view_all_jobs():
+    """Display all jobs in a formatted table."""
+    jobs = database.fetch_all("""
+        SELECT job_id, title, skill_required, location, duration, pay_rate, status, posted_date
+        FROM jobs
+        ORDER BY posted_date DESC
+    """)
+    
+    if not jobs:
+        print_info("No jobs found.")
+        return
+    
+    # Convert to list of lists for tabulate
+    table_data = []
+    for job in jobs:
+        table_data.append([
+            job['job_id'],
+            job['title'],
+            job['skill_required'],
+            job['location'],
+            job['duration'] or 'N/A',
+            job['pay_rate'] or 'N/A',
+            job['status'],
+            job['posted_date'] or 'N/A'
+        ])
+    
+    headers = ["Job ID", "Title", "Skills Required", "Location", "Duration", "Pay Rate", "Status", "Posted Date"]
+    print(tabulate(table_data, headers=headers, tablefmt="grid"))
 
 
 def view_farmer_jobs(farmer_id: int):
-    """Display jobs posted by a specific farmer (used by main.py)."""
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    cursor.execute(
+    """Display jobs posted by a specific farmer."""
+    jobs = database.fetch_all(
         """
         SELECT job_id, title, skill_required, location, duration, pay_rate, status, posted_date
         FROM jobs
         WHERE farmer_id = ?
+        ORDER BY posted_date DESC
         """,
-        (farmer_id,),
+        (farmer_id,)
     )
-    jobs = cursor.fetchall()
-    conn.close()
-
+    
     if not jobs:
-        print("You have no jobs posted.")
+        print_info("You have no jobs posted.")
         return
-
+    
+    # Convert to list of lists for tabulate
+    table_data = []
+    for job in jobs:
+        table_data.append([
+            job['job_id'],
+            job['title'],
+            job['skill_required'],
+            job['location'],
+            job['duration'] or 'N/A',
+            job['pay_rate'] or 'N/A',
+            job['status'],
+            job['posted_date'] or 'N/A'
+        ])
+    
     headers = ["Job ID", "Title", "Skills Required", "Location", "Duration", "Pay Rate", "Status", "Posted Date"]
-    print(tabulate(jobs, headers=headers, tablefmt="grid"))
+    print(tabulate(table_data, headers=headers, tablefmt="grid"))
+
+
+def search_jobs_by_location(location: str):
+    """Search and display jobs by location."""
+    if not location or not location.strip():
+        print_error("Location cannot be empty.")
+        return
+    
+    location_pattern = f"%{location.strip()}%"
+    jobs = database.fetch_all(
+        """
+        SELECT job_id, title, skill_required, location, duration, pay_rate, status, posted_date
+        FROM jobs
+        WHERE location LIKE ?
+        ORDER BY posted_date DESC
+        """,
+        (location_pattern,)
+    )
+    
+    if not jobs:
+        print_info(f"No jobs found in '{location}'.")
+        return
+    
+    # Convert to list of lists for tabulate
+    table_data = []
+    for job in jobs:
+        table_data.append([
+            job['job_id'],
+            job['title'],
+            job['skill_required'],
+            job['location'],
+            job['duration'] or 'N/A',
+            job['pay_rate'] or 'N/A',
+            job['status'],
+            job['posted_date'] or 'N/A'
+        ])
+    
+    headers = ["Job ID", "Title", "Skills Required", "Location", "Duration", "Pay Rate", "Status", "Posted Date"]
+    print(tabulate(table_data, headers=headers, tablefmt="grid"))
 
 
 def update_job_status(job_id: int, new_status: str):
     """Update a job's status (open/filled/closed)."""
     new_status = new_status.lower()
     if new_status not in ("open", "filled", "closed"):
-        print("Invalid status. Must be 'open', 'filled', or 'closed'.")
+        print_error("Invalid status. Must be 'open', 'filled', or 'closed'.")
         return
-
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    cursor.execute("UPDATE jobs SET status = ? WHERE job_id = ?", (new_status, job_id))
-    conn.commit()
-    conn.close()
-    print(f"Job status updated to '{new_status}'.")
-
-
-def search_jobs_by_location(location: str):
-    """Search and display jobs by a given location string (used by main.py)."""
-    location_input = location.strip()
-    if not location_input:
-        print("Invalid input.")
+    
+    # Check if job exists
+    job = database.fetch_one("SELECT job_id FROM jobs WHERE job_id = ?", (job_id,))
+    if not job:
+        print_error(f"Job with ID {job_id} not found.")
         return
+    
+    try:
+        database.execute_query(
+            "UPDATE jobs SET status = ? WHERE job_id = ?",
+            (new_status, job_id)
+        )
+        print_success(f"Job status updated to '{new_status}'.")
+    except Exception as e:
+        print_error(f"Failed to update job status: {e}")
 
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    cursor.execute(
-        """
-        SELECT job_id, title, skill_required, location, duration, pay_rate, status, posted_date
-        FROM jobs
-        WHERE location LIKE ?
-        """,
-        (f"%{location_input}%",),
-    )
-    jobs = cursor.fetchall()
-    conn.close()
 
-    if not jobs:
-        print(f"No jobs found in '{location_input}'.")
+def delete_job(job_id: int):
+    """Delete a job from the database."""
+    # Check if job exists
+    job = database.fetch_one("SELECT job_id, title FROM jobs WHERE job_id = ?", (job_id,))
+    if not job:
+        print_error(f"Job with ID {job_id} not found.")
         return
-
-    headers = ["Job ID", "Title", "Skills Required", "Location", "Duration", "Pay Rate", "Status", "Posted Date"]
-    print(tabulate(jobs, headers=headers, tablefmt="grid"))
+    
+    try:
+        database.execute_query("DELETE FROM jobs WHERE job_id = ?", (job_id,))
+        print_success(f"Job '{job.get('title', job_id)}' deleted successfully.")
+    except Exception as e:
+        print_error(f"Failed to delete job: {e}")
 
 
 __all__ = [
@@ -338,4 +226,3 @@ __all__ = [
     "delete_job",
     "search_jobs_by_location",
 ]
-
