@@ -1,20 +1,4 @@
 #!/usr/bin/env python3
-"""
-matching_engine.py
-Member 4: Divin Semana - Matching Algorithm & Display
-
-Integrates with database.py and modals.py:
-- job -> worker matching
-- worker -> job matching
-- display using tabulate
-- simple proximity matching for locations in "lat,lon" format
-- records matches into the matches table in the DB
-
-Usage:
-    chmod +x matching_engine.py
-    ./matching_engine.py --demo
-    ./matching_engine.py --show-history
-"""
 from __future__ import annotations
 
 import math
