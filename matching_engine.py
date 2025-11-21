@@ -190,6 +190,42 @@ class MatchingEngine:
         reasons.append(f"final_score {score:.3f}")
         return score, reasons
 
+
+def match_workers_to_job(job_id: int, top_n: int = 10):
+    """
+    Convenience function used by main.py to find and display workers for a given job.
+    """
+    database.init_database()
+    job = database.fetch_one("SELECT * FROM jobs WHERE job_id = ?", (job_id,))
+    if not job:
+        print(f"No job found with ID {job_id}.")
+        return
+
+    engine = MatchingEngine()
+    matches = engine.match_job_to_workers(job, top_n=top_n)
+    if not matches:
+        print("No matching workers found.")
+        return
+    display_job_matches(job, matches)
+
+
+def match_jobs_to_worker(worker_id: int, top_n: int = 10):
+    """
+    Convenience function used by main.py to find and display jobs for a given worker.
+    """
+    database.init_database()
+    worker = database.fetch_one("SELECT * FROM workers WHERE worker_id = ?", (worker_id,))
+    if not worker:
+        print(f"No worker found with ID {worker_id}.")
+        return
+
+    engine = MatchingEngine()
+    matches = engine.match_worker_to_jobs(worker, top_n=top_n)
+    if not matches:
+        print("No matching jobs found.")
+        return
+    display_worker_matches(worker, matches)
+
 # ------------------------ Display Helpers --------------------------------
 
 def display_job_matches(job_row: Dict[str, Any], matches: List[Dict[str, Any]]):

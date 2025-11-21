@@ -1,242 +1,169 @@
-import uuid
-
-# In-memory storage
-farmers = {}
-workers = {}
-
-
-# ------------------------------
-# Validation Utilities
-# ------------------------------
-def validate_non_empty(value, field_name="Field"):
-    """Ensure the input is not empty."""
-    value = value.strip()
-    if not value:
-        raise ValueError(f"{field_name} cannot be empty.")
-    return value
-
-
-def validate_integer(value, field_name="Field"):
-    """Ensure the input can be converted to an integer."""
-    try:
-        return int(value)
-    except ValueError:
-        raise ValueError(f"{field_name} must be a valid number.")
-
-
-def validate_phone(phone):
-    """Ensure phone number contains digits only and has at least 7 characters."""
-    phone = phone.strip()
-
-    if not phone.isdigit() or len(phone) < 7:
-        raise ValueError("Phone number must contain digits only and be at least 7 characters.")
-    return phone
+import database
+from modals import Farmer, Worker
+from utils import (
+    print_error,
+    print_success,
+    print_info,
+)
 
 
 # ------------------------------
-# Helper Functions
-# ------------------------------
-def generate_id():
-    """Generate a short unique ID."""
-    return str(uuid.uuid4())[:8]
-
-
-def save_profile(user_type, user_id, data):
-    """Save farmer or worker profile."""
-    if user_type == "farmer":
-        farmers[user_id] = data
-    elif user_type == "worker":
-        workers[user_id] = data
-
-
-def get_profile(user_type, user_id):
-    """Retrieve stored profile."""
-    if user_type == "farmer":
-        return farmers.get(user_id)
-    elif user_type == "worker":
-        return workers.get(user_id)
-    return None
-
-
-# ------------------------------
-# Registration Functions
+# Registration Functions (DB-backed)
 # ------------------------------
 def register_farmer():
+    """
+    Register a farmer and save to the SQLite database.
+
+    This implementation is aligned with the `farmers` table defined in `database.py`.
+    """
     print("\n=== Farmer Registration ===")
+
+    name = input("Enter your full name: ").strip()
+    phone = input("Enter your phone number: ").strip()
+    location = input("Enter your location: ").strip()
+    email = input("Enter your email (optional): ").strip() or None
+
+    farmer = Farmer(name=name, phone=phone, location=location, email=email)
+    is_valid, error = farmer.validate()
+    if not is_valid:
+        print_error(error)
+        return None
+
     try:
-        name = validate_non_empty(input("Enter your full name: "), "Name")
-        location = validate_non_empty(input("Enter your location: "), "Location")
-        farm_size = validate_non_empty(input("Enter farm size (e.g., '3 acres'): "), "Farm Size")
-        crops = validate_non_empty(input("Crops grown (comma separated): "), "Crops")
-        phone = validate_phone(input("Phone number: "))
+        conn = database.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO farmers (name, phone, location, email)
+            VALUES (?, ?, ?, ?)
+            """,
+            (farmer.name, farmer.phone, farmer.location, farmer.email),
+        )
+        conn.commit()
+        farmer_id = cursor.lastrowid
+        conn.close()
 
-        user_id = generate_id()
-
-        profile_data = {
-            "id": user_id,
-            "name": name,
-            "location": location,
-            "farm_size": farm_size,
-            "crops": [c.strip() for c in crops.split(",")],
-            "phone": phone
-        }
-
-        save_profile("farmer", user_id, profile_data)
-
-        print(f"\nFarmer registered successfully! Your ID is: {user_id}")
-        return user_id
-
-    except ValueError as e:
-        print("Error:", e)
+        print_success(f"Farmer registered successfully! Your ID is: {farmer_id}")
+        return farmer_id
+    except Exception as e:
+        print_error(f"Failed to register farmer: {e}")
         return None
 
 
 def register_worker():
+    """
+    Register a worker and save to the SQLite database.
+
+    This implementation is aligned with the `workers` table defined in `database.py`.
+    """
     print("\n=== Worker Registration ===")
+
+    name = input("Enter your full name: ").strip()
+    phone = input("Enter your phone number: ").strip()
+    location = input("Enter your location: ").strip()
+    skills = input("Skills (comma separated): ").strip()
+
+    availability_input = input("Are you currently available for work? (y/n): ").strip().lower()
+    available = availability_input in ("y", "yes")
+
+    worker = Worker(name=name, phone=phone, location=location, skills=skills, available=available)
+    is_valid, error = worker.validate()
+    if not is_valid:
+        print_error(error)
+        return None
+
     try:
-        name = validate_non_empty(input("Enter your full name: "), "Name")
-        age = validate_integer(input("Enter your age: "), "Age")
-        skills = validate_non_empty(input("Skills (comma separated): "), "Skills")
-        availability = validate_non_empty(input("Availability (e.g., Full-time): "), "Availability")
-        phone = validate_phone(input("Phone number: "))
+        conn = database.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO workers (name, phone, location, skills, available)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (worker.name, worker.phone, worker.location, worker.skills, int(worker.available)),
+        )
+        conn.commit()
+        worker_id = cursor.lastrowid
+        conn.close()
 
-        user_id = generate_id()
-
-        profile_data = {
-            "id": user_id,
-            "name": name,
-            "age": age,
-            "skills": [s.strip() for s in skills.split(",")],
-            "availability": availability,
-            "phone": phone
-        }
-
-        save_profile("worker", user_id, profile_data)
-
-        print(f"\nWorker registered successfully! Your ID is: {user_id}")
-        return user_id
-
-    except ValueError as e:
-        print("Error:", e)
+        print_success(f"Worker registered successfully! Your ID is: {worker_id}")
+        return worker_id
+    except Exception as e:
+        print_error(f"Failed to register worker: {e}")
         return None
 
 
 # ------------------------------
-# Profile Viewing & Updating
+# Profile Viewing & Updating (DB-backed)
 # ------------------------------
-def view_profile(user_type, user_id):
-    profile = get_profile(user_type, user_id)
-    if not profile:
-        print("Profile not found.")
+def view_farmer_profile(farmer_id: int):
+    """Display a farmer profile from the database."""
+    farmer = database.fetch_one("SELECT * FROM farmers WHERE farmer_id = ?", (farmer_id,))
+    if not farmer:
+        print_info("Farmer profile not found.")
         return
 
-    print(f"\n=== {user_type.capitalize()} Profile ===")
-    for key, value in profile.items():
-        print(f"{key.capitalize()}: {value}")
+    print("\n=== Farmer Profile ===")
+    for key in ("farmer_id", "name", "phone", "location", "email", "registration_date"):
+        if key in farmer:
+            print(f"{key.replace('_', ' ').title()}: {farmer[key]}")
 
 
-def update_profile(user_type, user_id):
-    profile = get_profile(user_type, user_id)
-    if not profile:
-        print("Profile not found.")
+def view_worker_profile(worker_id: int):
+    """Display a worker profile from the database."""
+    worker = database.fetch_one("SELECT * FROM workers WHERE worker_id = ?", (worker_id,))
+    if not worker:
+        print_info("Worker profile not found.")
         return
 
-    print("\nWhich field would you like to update?")
-    for key in profile.keys():
-        if key != "id":
-            print(f"- {key}")
+    print("\n=== Worker Profile ===")
+    for key in ("worker_id", "name", "phone", "location", "skills", "available", "registration_date"):
+        if key in worker:
+            print(f"{key.replace('_', ' ').title()}: {worker[key]}")
 
-    field = input("\nEnter field name: ").strip()
 
-    if field not in profile or field == "id":
-        print("Invalid field selected.")
+def update_worker_skills(worker_id: int):
+    """Prompt for and update a worker's skills in the database."""
+    worker = database.fetch_one("SELECT * FROM workers WHERE worker_id = ?", (worker_id,))
+    if not worker:
+        print_info("Worker profile not found.")
         return
 
-    new_value = input(f"Enter new value for {field}: ")
+    print(f"Current skills: {worker.get('skills', '')}")
+    new_skills = input("Enter new skills (comma separated): ").strip()
+    if not new_skills:
+        print_error("Skills cannot be empty.")
+        return
 
     try:
-        # Validation based on existing field type
-        if field == "phone":
-            new_value = validate_phone(new_value)
-        elif isinstance(profile[field], int):
-            new_value = validate_integer(new_value, field)
-        elif isinstance(profile[field], list):
-            new_value = [v.strip() for v in new_value.split(",")]
-        else:
-            new_value = validate_non_empty(new_value, field)
-
-        profile[field] = new_value
-        save_profile(user_type, user_id, profile)
-
-        print("Profile updated successfully!")
-
-    except ValueError as e:
-        print("Error:", e)
+        database.execute_query(
+            "UPDATE workers SET skills = ? WHERE worker_id = ?",
+            (new_skills, worker_id),
+        )
+        print_success("Worker skills updated successfully!")
+    except Exception as e:
+        print_error(f"Failed to update skills: {e}")
 
 
-# ------------------------------
-# Authentication & User Type Selection
-# ------------------------------
-def choose_user_type():
-    print("\nAre you a:")
-    print("1. Farmer")
-    print("2. Worker")
-
-    choice = input("Select 1 or 2: ")
-
-    if choice == "1":
-        return "farmer"
-    elif choice == "2":
-        return "worker"
-    else:
-        print("Invalid selection.")
-        return None
-
-
-def authenticate_user():
-    print("\n=== User Login ===")
-    user_type = choose_user_type()
-    if not user_type:
-        return None, None
-
-    user_id = input("Enter your user ID: ").strip()
-
-    if get_profile(user_type, user_id):
-        print("Login successful!")
-        return user_type, user_id
-    else:
-        print("Invalid ID.")
-        return None, None
+def update_availability(worker_id: int, available: bool):
+    """Update a worker's availability flag in the database."""
+    try:
+        database.execute_query(
+            "UPDATE workers SET available = ? WHERE worker_id = ?",
+            (1 if available else 0, worker_id),
+        )
+        status_text = "available" if available else "not available"
+        print_success(f"Availability updated: worker is now {status_text}.")
+    except Exception as e:
+        print_error(f"Failed to update availability: {e}")
 
 
 # ------------------------------
-# CLI Menu
-# ------------------------------
-if __name__ == "__main__":
-    while True:
-        print("\n=== User Management Menu ===")
-        print("1. Register Farmer")
-        print("2. Register Worker")
-        print("3. Login & View Profile")
-        print("4. Login & Update Profile")
-        print("5. Exit")
-
-        option = input("Choose an option: ")
-
-        if option == "1":
-            register_farmer()
-        elif option == "2":
-            register_worker()
-        elif option == "3":
-            u_type, u_id = authenticate_user()
-            if u_type:
-                view_profile(u_type, u_id)
-        elif option == "4":
-            u_type, u_id = authenticate_user()
-            if u_type:
-                update_profile(u_type, u_id)
-        elif option == "5":
-            print("Goodbye!")
-            break
-        else:
-            print("Invalid option.")
+__all__ = [
+    "register_farmer",
+    "register_worker",
+    "view_farmer_profile",
+    "view_worker_profile",
+    "update_worker_skills",
+    "update_availability",
+]

@@ -70,11 +70,13 @@ def handle_farmer_login():
         print("Available Farmers:")
         print_separator()
         for idx, farmer in enumerate(farmers, 1):
-            print(f"[{idx}] {farmer[1]} - {farmer[2]}")
+            print(f"[{idx}] {farmer['name']} - {farmer['location']}")
         print_separator()
         
         choice = get_user_choice(1, len(farmers))
-        farmer_id, farmer_name, _ = farmers[choice - 1]
+        selected_farmer = farmers[choice - 1]
+        farmer_id = selected_farmer["farmer_id"]
+        farmer_name = selected_farmer["name"]
         
         while True:
             choice = display_farmer_menu(farmer_name)
@@ -113,11 +115,11 @@ def handle_farmer_login():
                 print("Your Open Jobs:")
                 print_separator()
                 for idx, job in enumerate(jobs, 1):
-                    print(f"[{idx}] {job[1]}")
+                    print(f"[{idx}] {job['title']}")
                 print_separator()
                 
                 job_choice = get_user_choice(1, len(jobs))
-                job_id = jobs[job_choice - 1][0]
+                job_id = jobs[job_choice - 1]["job_id"]
                 
                 matching_engine.match_workers_to_job(job_id)
                 pause()
@@ -138,11 +140,11 @@ def handle_farmer_login():
                 print("Your Jobs:")
                 print_separator()
                 for idx, job in enumerate(jobs, 1):
-                    print(f"[{idx}] {job[1]} (Status: {job[2]})")
+                    print(f"[{idx}] {job['title']} (Status: {job['status']})")
                 print_separator()
                 
                 job_choice = get_user_choice(1, len(jobs))
-                job_id = jobs[job_choice - 1][0]
+                job_id = jobs[job_choice - 1]["job_id"]
                 
                 from menu import display_job_status_menu
                 new_status = display_job_status_menu()
@@ -166,11 +168,11 @@ def handle_farmer_login():
                 print("Your Jobs:")
                 print_separator()
                 for idx, job in enumerate(jobs, 1):
-                    print(f"[{idx}] {job[1]}")
+                    print(f"[{idx}] {job['title']}")
                 print_separator()
                 
                 job_choice = get_user_choice(1, len(jobs))
-                job_id = jobs[job_choice - 1][0]
+                job_id = jobs[job_choice - 1]["job_id"]
                 
                 if confirm_action("Are you sure you want to delete this job?"):
                     job_management.delete_job(job_id)
@@ -203,11 +205,13 @@ def handle_worker_login():
         print("Available Workers:")
         print_separator()
         for idx, worker in enumerate(workers, 1):
-            print(f"[{idx}] {worker[1]} - Skills: {worker[2]}")
+            print(f"[{idx}] {worker['name']} - Skills: {worker['skills']}")
         print_separator()
         
         choice = get_user_choice(1, len(workers))
-        worker_id, worker_name, _ = workers[choice - 1]
+        selected_worker = workers[choice - 1]
+        worker_id = selected_worker["worker_id"]
+        worker_name = selected_worker["name"]
         
         while True:
             choice = display_worker_menu(worker_name)
