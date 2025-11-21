@@ -6,13 +6,13 @@ import sys
 import argparse
 from typing import List, Tuple, Optional, Dict, Any
 
-# Import application modules (assumes database.py and modals.py are in same dir or in PYTHONPATH)
+# Import application modules (assumes database.py and models.py are in same dir or in PYTHONPATH)
 try:
     import database
-    import modals
+    import models
 except Exception as e:
-    print("Failed to import local modules database.py or modals.py:", e)
-    print("Make sure matching_engine.py is in same folder as database.py and modals.py")
+    print("Failed to import local modules database.py or models.py:", e)
+    print("Make sure matching_engine.py is in same folder as database.py and models.py")
     raise
 
 try:
@@ -52,6 +52,46 @@ def haversine_km(a: Dict[str, float], b: Dict[str, float]) -> float:
 
 def normalize_skill(s: str) -> str:
     return s.strip().lower()
+
+
+def match_location_text(loc1: str, loc2: str) -> float:
+    """
+    Match two location strings textually.
+    Returns a score between 0.0 and 1.0 based on text similarity.
+    
+    Args:
+        loc1 (str): First location string
+        loc2 (str): Second location string
+        
+    Returns:
+        float: Similarity score (0.0 to 1.0)
+    """
+    if not loc1 or not loc2:
+        return 0.5  # Neutral if either is missing
+    
+    loc1_lower = loc1.strip().lower()
+    loc2_lower = loc2.strip().lower()
+    
+    # Exact match
+    if loc1_lower == loc2_lower:
+        return 1.0
+    
+    # One contains the other (partial match)
+    if loc1_lower in loc2_lower or loc2_lower in loc1_lower:
+        return 0.8
+    
+    # Check for common words
+    words1 = set(loc1_lower.split())
+    words2 = set(loc2_lower.split())
+    if words1 and words2:
+        common_words = words1 & words2
+        if common_words:
+            # Score based on proportion of common words
+            max_words = max(len(words1), len(words2))
+            return min(0.7, len(common_words) / max_words)
+    
+    # No match
+    return 0.3
 
 # --------------------------- Matching Logic ------------------------------
 
@@ -153,11 +193,17 @@ class MatchingEngine:
             skill_score = len(matched) / len(job_required)
             reasons.append(f"skills matched {len(matched)}/{len(job_required)}")
 
-        # Proximity score - only if both have lat,lon
+        # Proximity score - try lat/lon first, fall back to text matching
         prox_score = 0.5  # neutral default when no location info
-        worker_loc = parse_latlon(worker_row.get("location", "") or "")
-        job_loc_parsed = job_loc if job_loc is not None else parse_latlon(job_row.get("location", "") or "")
+        worker_loc_str = worker_row.get("location", "") or ""
+        job_loc_str = job_row.get("location", "") or ""
+        
+        # Try to parse as lat/lon coordinates
+        worker_loc = parse_latlon(worker_loc_str)
+        job_loc_parsed = job_loc if job_loc is not None else parse_latlon(job_loc_str)
+        
         if worker_loc and job_loc_parsed:
+            # Both have valid lat/lon coordinates - use distance calculation
             try:
                 dist = haversine_km(worker_loc, job_loc_parsed)
                 reasons.append(f"distance {dist:.1f}km")
@@ -172,8 +218,12 @@ class MatchingEngine:
             except Exception:
                 reasons.append("proximity calc failed")
                 prox_score = 0.5
+        elif worker_loc_str and job_loc_str:
+            # Fall back to text-based location matching
+            prox_score = match_location_text(worker_loc_str, job_loc_str)
+            reasons.append(f"location text match: {prox_score:.2f}")
         else:
-            reasons.append("no latlon (proximity neutral)")
+            reasons.append("no location info (proximity neutral)")
 
         # Simple metadata bonus from worker rating if present in metadata column (not guaranteed)
         bonus = 0.0
@@ -183,9 +233,23 @@ class MatchingEngine:
         except Exception:
             pass
 
-        # Compose weighted score
-        w_skill, w_prox, w_bonus = 0.65, 0.25, 0.10
-        score = (skill_score * w_skill) + (prox_score * w_prox) + (bonus * w_bonus)
+        # Availability bonus (10% weight)
+        availability_bonus = 0.0
+        if not inverse:
+            # When matching workers to jobs, check worker availability
+            if worker_row.get("available", 0):
+                availability_bonus = 1.0
+                reasons.append("worker available")
+            else:
+                availability_bonus = 0.0
+                reasons.append("worker not available")
+        else:
+            # When matching jobs to workers, availability is already filtered
+            availability_bonus = 1.0
+        
+        # Compose weighted score (60% skill, 30% location, 10% availability)
+        w_skill, w_prox, w_avail = 0.60, 0.30, 0.10
+        score = (skill_score * w_skill) + (prox_score * w_prox) + (availability_bonus * w_avail)
         score = max(0.0, min(1.0, score))
         reasons.append(f"final_score {score:.3f}")
         return score, reasons
@@ -195,7 +259,6 @@ def match_workers_to_job(job_id: int, top_n: int = 10):
     """
     Convenience function used by main.py to find and display workers for a given job.
     """
-    database.init_database()
     job = database.fetch_one("SELECT * FROM jobs WHERE job_id = ?", (job_id,))
     if not job:
         print(f"No job found with ID {job_id}.")
@@ -213,7 +276,6 @@ def match_jobs_to_worker(worker_id: int, top_n: int = 10):
     """
     Convenience function used by main.py to find and display jobs for a given worker.
     """
-    database.init_database()
     worker = database.fetch_one("SELECT * FROM workers WHERE worker_id = ?", (worker_id,))
     if not worker:
         print(f"No worker found with ID {worker_id}.")
@@ -229,32 +291,50 @@ def match_jobs_to_worker(worker_id: int, top_n: int = 10):
 # ------------------------ Display Helpers --------------------------------
 
 def display_job_matches(job_row: Dict[str, Any], matches: List[Dict[str, Any]]):
-    headers = ["worker_id", "name", "skills", "score", "reasons"]
+    """Display matched workers for a job in a formatted table."""
+    headers = ["Rank", "Worker ID", "Name", "Skills", "Location", "Match Score", "Details"]
     rows = []
-    for m in matches:
+    for idx, m in enumerate(matches, 1):
+        worker = m.get("worker_row", {})
+        score_percent = int(round(m['score'] * 100))
         rows.append([
+            idx,
             m["worker_id"],
             m.get("name") or "",
             m.get("skills") or "",
-            f"{m['score']:.3f}",
-            "; ".join(m["reasons"])
+            worker.get("location", "N/A"),
+            f"{score_percent}%",
+            "; ".join(m["reasons"][:2])  # Show first 2 reasons
         ])
-    print("\nMatches for Job: {} - {}\n".format(job_row.get("job_id"), job_row.get("title", job_row.get("skill_required", ""))))
+    print("\n" + "=" * 80)
+    print(f"Matches for Job ID {job_row.get('job_id')}: {job_row.get('title', 'N/A')}")
+    print("=" * 80 + "\n")
     print(tabulate(rows, headers=headers, tablefmt="grid"))
+    print()
 
 def display_worker_matches(worker_row: Dict[str, Any], matches: List[Dict[str, Any]]):
-    headers = ["job_id", "title", "required_skill", "score", "reasons"]
+    """Display matched jobs for a worker in a formatted table."""
+    headers = ["Rank", "Job ID", "Title", "Required Skill", "Location", "Duration", "Pay Rate", "Match Score", "Details"]
     rows = []
-    for m in matches:
+    for idx, m in enumerate(matches, 1):
+        job = m.get("job_row", {})
+        score_percent = int(round(m['score'] * 100))
         rows.append([
+            idx,
             m["job_id"],
             m.get("title") or "",
             m.get("skill_required") or "",
-            f"{m['score']:.3f}",
-            "; ".join(m["reasons"])
+            job.get("location", "N/A"),
+            job.get("duration", "N/A") or "N/A",
+            job.get("pay_rate", "N/A") or "N/A",
+            f"{score_percent}%",
+            "; ".join(m["reasons"][:2])  # Show first 2 reasons
         ])
-    print("\nMatches for Worker: {} - {}\n".format(worker_row.get("worker_id"), worker_row.get("name", "")))
+    print("\n" + "=" * 80)
+    print(f"Matches for Worker ID {worker_row.get('worker_id')}: {worker_row.get('name', 'N/A')}")
+    print("=" * 80 + "\n")
     print(tabulate(rows, headers=headers, tablefmt="grid"))
+    print()
 
 # ----------------------------- CLI / Demo --------------------------------
 
@@ -325,5 +405,5 @@ def main(argv: List[str]):
 
     print("No action specified. Use --demo or --show-history")
 
-if __name__ == "__main__":
-    main(sys.argv[1:])
+# Matching engine is integrated into main.py
+# This module should not be run directly

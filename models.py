@@ -329,4 +329,3 @@ class Job:
     
     def __repr__(self):
         return f"Job(id={self.job_id}, title='{self.title}', location='{self.location}', status='{self.status}')"
-

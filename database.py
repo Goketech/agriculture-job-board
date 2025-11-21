@@ -226,7 +226,6 @@ def fetch_one(query, params=None):
         return None
 
 
-if __name__ == "__main__":
-    # Initialize database when run directly
-    init_database()
+# Database initialization is handled by main.py
+# This module should not be run directly
 

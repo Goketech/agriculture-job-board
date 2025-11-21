@@ -32,15 +32,12 @@ A Python CLI application that connects local farmers with agricultural workers t
    pip install -r requirements.txt
    ```
 
-4. **Initialize database**
-   ```bash
-   python database.py
-   ```
-
-5. **Run the application**
+4. **Run the application**
    ```bash
    python main.py
    ```
+   
+   Note: The database will be automatically initialized on first run. The database file will be created at `data/agri_jobs.db`.
 
 ## 📁 Project Structure
 
