@@ -64,6 +64,9 @@ def register_worker():
     skills = input("Skills (comma separated): ").strip()
 
     availability_input = input("Are you currently available for work? (y/n): ").strip().lower()
+    while availability_input not in ("y", "yes", "n", "no"):
+        print_error("Invalid input. Please enter 'y' or 'n'.")
+        availability_input = input("Are you currently available for work? (y/n): ").strip().lower()
     available = availability_input in ("y", "yes")
 
     worker = Worker(name=name, phone=phone, location=location, skills=skills, available=available)
